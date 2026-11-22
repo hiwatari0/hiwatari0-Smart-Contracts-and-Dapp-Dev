@@ -1,18 +1,21 @@
+// Contract configuration for the Voting DApp.
+// After every (re)deployment, paste the new address below.
 
 window.CONTRACT_CONFIG = {
-    // Deployed Voting smart contract on Sepolia
-    address: "0x8e75689c6a58A9051bb692526B113aB40b2cdaC3",
+    // Voting.sol deployed from Remix on the local Hardhat node
+    address: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
 
-    // Ethereum Sepolia Testnet
-    chainId: 11155111,
-    networkName: "Sepolia",
+    // Hardhat local network
+    chainId: 31337,
+    networkName: "Hardhat Local",
 
-    // Ethers.js v6 human-readable ABI
+    // Human-readable ABI (matches contracts/Voting.sol).
+    // Candidate IDs start at 0.
     abi: [
         "function vote(uint256 candidateId)",
         "function getCandidate(uint256 candidateId) view returns (uint256 id, string name, uint256 voteCount)",
         "function getCandidateCount() view returns (uint256)",
         "function hasVoted(address voter) view returns (bool)",
-        "event VoteCast(address indexed voter, uint256 indexed candidateId, string candidateName)"
+        "event VoteCast(address indexed voter, uint256 indexed candidateId)"
     ]
 };

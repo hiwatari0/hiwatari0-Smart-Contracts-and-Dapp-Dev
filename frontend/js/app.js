@@ -1,682 +1,377 @@
-
-/* =========================================
-   VOTEX - DECENTRALIZED VOTING APPLICATION
-   Built with Ethers.js v6
-========================================= */
+// Voting DApp: wallet connection, reading contract state, casting votes.
+// Uses ethers.js v6. Config (address, chainId, ABI) lives in contract.js.
 
 const CONFIG = window.CONTRACT_CONFIG;
+const RPC_URL = CONFIG.rpcUrl || "http://127.0.0.1:8545";
 
 let provider = null;
 let signer = null;
-let votingContract = null;
-let currentAccount = null;
-let hasAlreadyVoted = false;
+let contract = null;
+let account = null;
+let hasVoted = false;
 
+const $ = (id) => document.getElementById(id);
 
-// DOM ELEMENTS
-const connectWalletBtn = document.getElementById("connectWalletBtn");
-const walletAddress = document.getElementById("walletAddress");
-const walletStatus = document.getElementById("walletStatus");
+// ---------- small UI helpers ----------
 
-const totalCandidatesElement = document.getElementById("totalCandidates");
-const totalVotesElement = document.getElementById("totalVotes");
-const votingStatusElement = document.getElementById("votingStatus");
-const votingStatusDescription = document.getElementById("votingStatusDescription");
-
-const candidateList = document.getElementById("candidateList");
-const resultsList = document.getElementById("resultsList");
-
-const transactionPanel = document.getElementById("transactionPanel");
-const transactionIcon = document.getElementById("transactionIcon");
-const transactionTitle = document.getElementById("transactionTitle");
-const transactionMessage = document.getElementById("transactionMessage");
-
-const notification = document.getElementById("notification");
-const notificationIcon = document.getElementById("notificationIcon");
-const notificationMessage = document.getElementById("notificationMessage");
-
-const networkIndicator = document.getElementById("networkIndicator");
-const networkName = document.getElementById("networkName");
-
-
-// =========================================
-// NOTIFICATION SYSTEM
-// =========================================
-
-let notificationTimeout;
-
-function showNotification(message, type = "info") {
-    notification.classList.remove("hidden");
-
-    notificationMessage.textContent = message;
-
-    const icons = {
-        success: "fa-circle-check",
-        error: "fa-circle-exclamation",
-        info: "fa-circle-info"
-    };
-
-    notificationIcon.className = `fa-solid ${icons[type] || icons.info}`;
-
-    notification.style.borderColor =
-        type === "success" ? "rgba(50,214,160,0.4)" :
-        type === "error" ? "rgba(255,107,125,0.4)" :
-        "rgba(86,133,255,0.3)";
-
-    clearTimeout(notificationTimeout);
-
-    notificationTimeout = setTimeout(() => {
-        notification.classList.add("hidden");
-    }, 4500);
+function shortAddress(address) {
+    return address.slice(0, 6) + "..." + address.slice(-4);
 }
 
-
-// =========================================
-// TRANSACTION STATUS
-// =========================================
-
-function updateTransactionStatus(title, message, type = "pending") {
-    transactionPanel.classList.remove("hidden");
-
-    transactionTitle.textContent = title;
-    transactionMessage.textContent = message;
-
-    const icons = {
-        pending: "fa-clock",
-        success: "fa-circle-check",
-        error: "fa-circle-exclamation"
-    };
-
-    transactionIcon.innerHTML =
-        `<i class="fa-solid ${icons[type] || icons.pending}"></i>`;
-
-    transactionIcon.style.color =
-        type === "success" ? "#32d6a0" :
-        type === "error" ? "#ff6b7d" :
-        "#8eaaff";
+function setBadge(text, ok) {
+    const badge = $("networkBadge");
+    badge.textContent = text;
+    badge.classList.toggle("ok", ok);
+    badge.classList.toggle("bad", !ok);
 }
 
-
-// =========================================
-// WALLET ADDRESS FORMATTING
-// =========================================
-
-function shortenAddress(address) {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+// type: "pending" | "success" | "error"
+function setStatus(title, message, type = "pending") {
+    $("txPanel").classList.remove("hidden");
+    $("txPanel").dataset.type = type;
+    $("txTitle").textContent = title;
+    $("txMessage").textContent = message;
 }
 
+function friendlyError(error) {
+    if (error.code === "ACTION_REJECTED" || error.code === 4001) {
+        return "You rejected the request in MetaMask. Nothing was sent.";
+    }
+    return error.reason || error.shortMessage || error.message || "Unknown error";
+}
 
-// =========================================
-// NETWORK VALIDATION
-// =========================================
+// ---------- network check and switch ----------
 
 async function checkNetwork() {
-    if (!provider) return false;
-
     const network = await provider.getNetwork();
+    const correct = Number(network.chainId) === CONFIG.chainId;
 
-    const correctNetwork =
-        Number(network.chainId) === CONFIG.chainId;
+    setBadge(
+        correct
+            ? CONFIG.networkName + " (" + network.chainId + ")"
+            : "Wrong network (" + network.chainId + ")",
+        correct
+    );
+    $("networkName").textContent = correct
+        ? CONFIG.networkName + " (Chain ID " + network.chainId + ")"
+        : "Wrong network (Chain ID " + network.chainId + ")";
 
-    networkName.textContent = correctNetwork
-        ? CONFIG.networkName + " Testnet"
-        : "Wrong Network";
-
-    networkIndicator.style.background =
-        correctNetwork ? "#32d6a0" : "#ff6b7d";
-
-    networkIndicator.style.boxShadow =
-        correctNetwork
-            ? "0 0 10px rgba(50,214,160,0.5)"
-            : "0 0 10px rgba(255,107,125,0.5)";
-
-    return correctNetwork;
+    return correct;
 }
 
+// Ask MetaMask to switch this site to the expected chain.
+// If the chain is unknown to MetaMask (error 4902), add it first.
+async function switchToExpectedChain() {
+    const chainIdHex = "0x" + CONFIG.chainId.toString(16);
 
-// =========================================
-// WALLET CONNECTION
-// =========================================
+    try {
+        await window.ethereum.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: chainIdHex }]
+        });
+        return true;
+    } catch (error) {
+        if (error.code === 4902) {
+            try {
+                await window.ethereum.request({
+                    method: "wallet_addEthereumChain",
+                    params: [{
+                        chainId: chainIdHex,
+                        chainName: CONFIG.networkName,
+                        rpcUrls: [RPC_URL],
+                        nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }
+                    }]
+                });
+                return true;
+            } catch (addError) {
+                console.error(addError);
+                return false;
+            }
+        }
+        console.error(error);
+        return false;
+    }
+}
 
-async function connectWallet() {
+// ---------- wallet connection ----------
 
+// userInitiated = true when the person clicked "Connect MetaMask".
+async function connectWallet(userInitiated = true) {
     if (!window.ethereum) {
-        showNotification(
-            "MetaMask is not installed. Please install the MetaMask extension.",
+        setStatus(
+            "MetaMask not found",
+            "Install the MetaMask extension in this browser and reload the page.",
             "error"
         );
         return;
     }
 
     try {
-        connectWalletBtn.disabled = true;
-        connectWalletBtn.innerHTML =
-            '<i class="fa-solid fa-spinner fa-spin"></i> Connecting...';
-
         provider = new ethers.BrowserProvider(window.ethereum);
-
-        const accounts = await provider.send(
-            "eth_requestAccounts",
-            []
-        );
-
-        if (!accounts.length) {
-            throw new Error("No wallet account was selected.");
-        }
-
-        currentAccount = ethers.getAddress(accounts[0]);
+        await provider.send("eth_requestAccounts", []);
 
         signer = await provider.getSigner();
+        account = await signer.getAddress();
 
-        const correctNetwork = await checkNetwork();
+        $("account").textContent = account;
+        $("connectBtn").textContent = shortAddress(account);
 
-        if (!correctNetwork) {
-            currentAccount = null;
-            signer = null;
-            votingContract = null;
+        if (!(await checkNetwork())) {
+            if (userInitiated) {
+                setStatus(
+                    "Wrong network",
+                    "Approve the network switch to " + CONFIG.networkName +
+                    " (Chain ID " + CONFIG.chainId + ") in MetaMask.",
+                    "pending"
+                );
 
-            walletAddress.textContent =
-                "Please switch MetaMask to Sepolia Testnet.";
+                const switched = await switchToExpectedChain();
 
-            walletStatus.innerHTML =
-                '<span class="status-dot" style="background:#ff6b7d"></span> Wrong Network';
-
-            showNotification(
-                "Wrong network. Please switch MetaMask to Sepolia.",
-                "error"
-            );
-
+                if (!switched) {
+                    setStatus(
+                        "Wrong network",
+                        "Switch MetaMask to " + CONFIG.networkName +
+                        " (Chain ID " + CONFIG.chainId + ") and reload this page.",
+                        "error"
+                    );
+                }
+                // On success MetaMask fires chainChanged; the page reloads
+                // and reconnects automatically.
+            } else {
+                setStatus(
+                    "Wrong network",
+                    "Click Connect MetaMask to switch to " + CONFIG.networkName + ".",
+                    "error"
+                );
+            }
             return;
         }
 
-        votingContract = new ethers.Contract(
-            CONFIG.address,
-            CONFIG.abi,
-            signer
-        );
+        // Make sure a contract really exists at the configured address.
+        const code = await provider.getCode(CONFIG.address);
+        if (code === "0x") {
+            setStatus(
+                "Contract not found",
+                "No contract at " + CONFIG.address + ". If you restarted the Hardhat node, " +
+                "deploy Voting.sol again and update the address in contract.js.",
+                "error"
+            );
+            return;
+        }
 
-        walletAddress.textContent =
-            `Connected: ${shortenAddress(currentAccount)}`;
+        contract = new ethers.Contract(CONFIG.address, CONFIG.abi, signer);
 
-        walletStatus.innerHTML =
-            '<span class="status-dot"></span> Connected';
+        // Event listener: refresh whenever a VoteCast event is emitted.
+        contract.on("VoteCast", () => loadData());
 
-        connectWalletBtn.innerHTML =
-            '<i class="fa-solid fa-wallet"></i> ' +
-            shortenAddress(currentAccount);
-
-        showNotification(
-            "Wallet connected successfully!",
-            "success"
-        );
-
-        await loadElectionData();
+        await loadData();
+        setStatus("Connected", "Wallet connected. Candidate data is loaded from the contract.", "success");
 
     } catch (error) {
-        if (error.code === 4001) {
-            showNotification(
-                "Wallet connection was rejected.",
-                "error"
-            );
-        } else {
-            console.error("Wallet connection error:", error);
-
-            showNotification(
-                error.message || "Unable to connect wallet.",
-                "error"
-            );
-        }
-
-    } finally {
-        connectWalletBtn.disabled = false;
-
-        if (!currentAccount) {
-            connectWalletBtn.innerHTML =
-                '<i class="fa-solid fa-wallet"></i> Connect Wallet';
-        }
+        console.error(error);
+        setStatus("Could not connect", friendlyError(error), "error");
     }
 }
 
-
-// =========================================
-// LOAD ELECTION DATA
-// =========================================
-
-async function loadElectionData() {
-
-    if (!votingContract) return;
+// Reconnect silently on page load if the site is already permitted.
+async function autoConnect() {
+    if (!window.ethereum) return;
 
     try {
-        const count = Number(
-            await votingContract.getCandidateCount()
-        );
-
-        const candidates = [];
-        let totalVotes = 0;
-
-        for (let id = 1; id <= count; id++) {
-
-            const candidate =
-                await votingContract.getCandidate(id);
-
-            const candidateData = {
-                id: Number(candidate.id),
-                name: candidate.name,
-                voteCount: Number(candidate.voteCount)
-            };
-
-            candidates.push(candidateData);
-
-            totalVotes += candidateData.voteCount;
+        const accounts = await window.ethereum.request({ method: "eth_accounts" });
+        if (accounts.length > 0) {
+            await connectWallet(false);
         }
-
-        totalCandidatesElement.textContent = count;
-        totalVotesElement.textContent = totalVotes;
-
-        if (currentAccount) {
-            hasAlreadyVoted =
-                await votingContract.hasVoted(currentAccount);
-
-            votingStatusElement.textContent =
-                hasAlreadyVoted ? "Voted" : "Not Voted";
-
-            votingStatusDescription.textContent =
-                hasAlreadyVoted
-                    ? "Your vote is recorded on-chain"
-                    : "You are eligible to vote";
-        }
-
-        renderCandidates(candidates);
-        renderResults(candidates, totalVotes);
-
     } catch (error) {
-        console.error("Election data error:", error);
-
-        showNotification(
-            "Unable to load election data from the smart contract.",
-            "error"
-        );
+        console.error(error);
     }
 }
 
+// ---------- read contract state ----------
 
-// =========================================
-// RENDER CANDIDATE CARDS
-// =========================================
+async function loadData() {
+    if (!contract) return;
 
-function renderCandidates(candidates) {
+    try {
+        const count = Number(await contract.getCandidateCount());
+        const candidates = [];
+        let total = 0;
 
-    candidateList.innerHTML = "";
+        for (let i = 0; i < count; i++) {
+            const [id, name, votes] = await contract.getCandidate(i);
+            candidates.push({ id: Number(id), name: name, votes: Number(votes) });
+            total += Number(votes);
+        }
 
-    candidates.forEach(candidate => {
+        hasVoted = await contract.hasVoted(account);
+
+        $("totalVotes").textContent = total;
+        $("candidateCount").textContent = count;
+        $("voteStatus").textContent = hasVoted ? "Already voted" : "Not voted yet";
+
+        renderCandidates(candidates, total);
+        renderResults(candidates, total);
+
+    } catch (error) {
+        console.error(error);
+        setStatus("Could not read contract", friendlyError(error), "error");
+    }
+}
+
+function renderCandidates(candidates, total) {
+    const grid = $("candidateList");
+    grid.innerHTML = "";
+
+    candidates.forEach((candidate) => {
+        const percent = total > 0 ? (candidate.votes / total) * 100 : 0;
 
         const card = document.createElement("article");
         card.className = "candidate-card";
 
-        const buttonDisabled = hasAlreadyVoted;
+        // top row: avatar + id chip
+        const top = document.createElement("div");
+        top.className = "card-top";
 
-        card.innerHTML = `
-            <div class="candidate-card-top">
-                <div class="candidate-avatar">
-                    <i class="fa-solid fa-user"></i>
-                </div>
+        const avatar = document.createElement("div");
+        avatar.className = "avatar";
+        avatar.textContent = candidate.name.charAt(0).toUpperCase();
 
-                <span class="candidate-id">
-                    CANDIDATE #${candidate.id}
-                </span>
-            </div>
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.textContent = "ID " + candidate.id;
 
-            <h3>${escapeHTML(candidate.name)}</h3>
+        top.append(avatar, chip);
 
-            <p class="candidate-description">
-                Registered participant in the decentralized election.
-            </p>
+        // name
+        const name = document.createElement("h3");
+        name.textContent = candidate.name;
 
-            <div class="candidate-vote-info">
-                <span>
-                    <i class="fa-solid fa-chart-simple"></i>
-                    Current votes
-                </span>
+        // vote count
+        const votes = document.createElement("div");
+        votes.className = "card-votes";
+        const number = document.createElement("strong");
+        number.textContent = candidate.votes;
+        const label = document.createElement("span");
+        label.textContent = candidate.votes === 1 ? "vote" : "votes";
+        votes.append(number, label);
 
-                <strong>${candidate.voteCount}</strong>
-            </div>
+        // share bar
+        const bar = document.createElement("div");
+        bar.className = "bar";
+        const fill = document.createElement("div");
+        fill.className = "bar-fill";
+        fill.style.width = percent + "%";
+        bar.appendChild(fill);
 
-            <button
-                class="vote-button"
-                data-candidate-id="${candidate.id}"
-                ${buttonDisabled ? "disabled" : ""}
-            >
-                ${
-                    hasAlreadyVoted
-                        ? "Already Voted"
-                        : '<i class="fa-solid fa-check"></i> Cast Your Vote'
-                }
-            </button>
-        `;
+        // vote button
+        const button = document.createElement("button");
+        button.className = "btn";
+        button.textContent = hasVoted ? "Already voted" : "Vote for " + candidate.name;
+        button.disabled = hasVoted;
+        button.addEventListener("click", () => castVote(candidate.id, candidate.name));
 
-        const voteButton = card.querySelector(".vote-button");
-
-        voteButton.addEventListener("click", () => {
-            castVote(candidate.id, candidate.name, voteButton);
-        });
-
-        candidateList.appendChild(card);
+        card.append(top, name, votes, bar, button);
+        grid.appendChild(card);
     });
 }
 
+function renderResults(candidates, total) {
+    const box = $("results");
+    box.innerHTML = "";
 
-// =========================================
-// RENDER LIVE RESULTS
-// =========================================
+    const maxVotes = Math.max(...candidates.map((c) => c.votes));
+    const leaders = candidates.filter((c) => c.votes === maxVotes).length;
 
-function renderResults(candidates, totalVotes) {
-
-    resultsList.innerHTML = "";
-
-    if (candidates.length === 0) {
-        resultsList.textContent = "No candidates found.";
-        return;
-    }
-
-    candidates.forEach(candidate => {
-
-        const percentage = totalVotes > 0
-            ? (candidate.voteCount / totalVotes) * 100
-            : 0;
+    candidates.forEach((candidate) => {
+        const percent = total > 0 ? (candidate.votes / total) * 100 : 0;
 
         const row = document.createElement("div");
-        row.className = "result-row";
+        row.className = "result";
 
-        row.innerHTML = `
-            <div class="result-info">
-                <span>${escapeHTML(candidate.name)}</span>
-                <strong>${candidate.voteCount} votes</strong>
-            </div>
+        const head = document.createElement("div");
+        head.className = "result-head";
 
-            <div
-                class="result-progress"
-                role="progressbar"
-                aria-valuenow="${percentage.toFixed(1)}"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                aria-label="${escapeHTML(candidate.name)} vote share"
-            >
-                <div
-                    class="result-progress-fill"
-                    style="width: ${percentage}%"
-                ></div>
-            </div>
+        const left = document.createElement("span");
+        left.textContent = candidate.name;
 
-            <span class="result-percentage">
-                ${percentage.toFixed(1)}%
-            </span>
-        `;
+        // mark a single clear leader
+        if (total > 0 && leaders === 1 && candidate.votes === maxVotes) {
+            const tag = document.createElement("span");
+            tag.className = "leading";
+            tag.textContent = "Leading";
+            left.appendChild(tag);
+        }
 
-        resultsList.appendChild(row);
+        const right = document.createElement("span");
+        right.textContent = candidate.votes + " votes (" + percent.toFixed(1) + "%)";
+
+        head.append(left, right);
+
+        const bar = document.createElement("div");
+        bar.className = "bar";
+        const fill = document.createElement("div");
+        fill.className = "bar-fill";
+        fill.style.width = percent + "%";
+        bar.appendChild(fill);
+
+        row.append(head, bar);
+        box.appendChild(row);
     });
 }
 
+// ---------- write to contract (vote) ----------
 
-// =========================================
-// HTML ESCAPING
-// =========================================
-
-function escapeHTML(value) {
-    return String(value).replace(/[&<>"']/g, character => ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;"
-    })[character]);
-}
-
-
-// =========================================
-// CAST VOTE
-// =========================================
-
-async function castVote(candidateId, candidateName, button) {
-
-    if (!votingContract || !currentAccount) {
-        showNotification(
-            "Please connect your MetaMask wallet first.",
-            "error"
-        );
-        return;
-    }
-
-    if (hasAlreadyVoted) {
-        showNotification(
-            "This wallet has already voted.",
-            "error"
-        );
-        return;
-    }
-
+async function castVote(candidateId, candidateName) {
     try {
-        const correctNetwork = await checkNetwork();
-
-        if (!correctNetwork) {
-            showNotification(
-                "Please switch to Sepolia Testnet.",
-                "error"
-            );
+        if (!(await checkNetwork())) {
+            setStatus("Wrong network", "Switch MetaMask to " + CONFIG.networkName + " first.", "error");
             return;
         }
 
-        const alreadyVoted =
-            await votingContract.hasVoted(currentAccount);
-
-        if (alreadyVoted) {
-            hasAlreadyVoted = true;
-            await loadElectionData();
-
-            showNotification(
-                "This wallet has already voted.",
-                "error"
-            );
+        if (await contract.hasVoted(account)) {
+            setStatus("Already voted", "This address has already voted.", "error");
+            await loadData();
             return;
         }
 
-        button.disabled = true;
-        button.innerHTML =
-            '<i class="fa-solid fa-spinner fa-spin"></i> Confirm in Wallet';
+        // Disable all vote buttons while the transaction is in progress.
+        document.querySelectorAll(".candidate-card .btn").forEach((b) => (b.disabled = true));
 
-        updateTransactionStatus(
-            "Awaiting Wallet Confirmation",
-            `Confirm your vote for ${candidateName} in MetaMask.`,
-            "pending"
-        );
+        setStatus("Confirm in MetaMask", "Approve the vote for " + candidateName + " in your wallet.", "pending");
 
-        const transaction =
-            await votingContract.vote(candidateId);
+        const tx = await contract.vote(candidateId);
 
-        updateTransactionStatus(
-            "Transaction Submitted",
-            `Transaction hash: ${transaction.hash}`,
-            "pending"
-        );
+        setStatus("Transaction submitted", "Hash: " + tx.hash + " (waiting for confirmation...)", "pending");
 
-        showNotification(
-            "Vote submitted! Waiting for blockchain confirmation.",
-            "info"
-        );
+        const receipt = await tx.wait();
 
-        button.innerHTML =
-            '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
-
-        const receipt = await transaction.wait();
-
-        if (!receipt || receipt.status !== 1) {
-            throw new Error("The voting transaction failed.");
+        if (receipt.status !== 1) {
+            throw new Error("The transaction was mined but failed.");
         }
 
-        hasAlreadyVoted = true;
-
-        updateTransactionStatus(
-            "Vote Successfully Recorded",
-            `Your vote for ${candidateName} has been confirmed on Sepolia.`,
+        setStatus(
+            "Vote confirmed",
+            "Voted for " + candidateName + ". Block " + receipt.blockNumber +
+            " | Gas used: " + receipt.gasUsed + " | Tx hash: " + tx.hash,
             "success"
         );
-
-        showNotification(
-            "Your vote has been successfully recorded!",
-            "success"
-        );
-
-        await loadElectionData();
 
     } catch (error) {
-
-        console.error("Voting error:", error);
-
-        if (error.code === 4001) {
-            showNotification(
-                "You rejected the transaction in MetaMask.",
-                "error"
-            );
-
-            updateTransactionStatus(
-                "Transaction Rejected",
-                "The wallet request was rejected. No vote was submitted.",
-                "error"
-            );
-
-        } else {
-            const message =
-                error.reason ||
-                error.shortMessage ||
-                error.message ||
-                "An unexpected error occurred.";
-
-            showNotification(message, "error");
-
-            updateTransactionStatus(
-                "Transaction Failed",
-                message,
-                "error"
-            );
-        }
-
-        if (currentAccount) {
-            try {
-                hasAlreadyVoted =
-                    await votingContract.hasVoted(currentAccount);
-
-                await loadElectionData();
-            } catch (refreshError) {
-                console.error("Refresh error:", refreshError);
-            }
-        }
-
-    } finally {
-        if (button && !hasAlreadyVoted) {
-            button.disabled = false;
-
-            button.innerHTML =
-                '<i class="fa-solid fa-check"></i> Cast Your Vote';
-        }
+        console.error(error);
+        setStatus("Vote not recorded", friendlyError(error), "error");
     }
+
+    // Refresh results and re-enable (or keep disabled) the buttons.
+    await loadData();
 }
 
-
-// =========================================
-// WALLET ACCOUNT CHANGE LISTENER
-// =========================================
+// ---------- wallet events and start-up ----------
 
 if (window.ethereum) {
-
-    window.ethereum.on("accountsChanged", async (accounts) => {
-
-        if (!accounts.length) {
-
-            currentAccount = null;
-            signer = null;
-            votingContract = null;
-            hasAlreadyVoted = false;
-
-            walletAddress.textContent =
-                "Connect your MetaMask wallet to participate.";
-
-            walletStatus.innerHTML =
-                '<span class="status-dot"></span> Not Connected';
-
-            connectWalletBtn.innerHTML =
-                '<i class="fa-solid fa-wallet"></i> Connect Wallet';
-
-            totalCandidatesElement.textContent = "--";
-            totalVotesElement.textContent = "--";
-            votingStatusElement.textContent = "--";
-            votingStatusDescription.textContent =
-                "Connect wallet to check";
-
-            candidateList.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">
-                        <i class="fa-solid fa-cube"></i>
-                    </div>
-                    <h3>Wallet Disconnected</h3>
-                    <p>Connect your wallet to load election information.</p>
-                </div>
-            `;
-
-            resultsList.innerHTML = `
-                <div class="results-empty">
-                    <i class="fa-solid fa-chart-simple"></i>
-                    <p>Connect your wallet to view election results.</p>
-                </div>
-            `;
-
-            return;
-        }
-
-        provider = new ethers.BrowserProvider(window.ethereum);
-
-        currentAccount = ethers.getAddress(accounts[0]);
-
-        signer = await provider.getSigner();
-
-        if (await checkNetwork()) {
-
-            votingContract = new ethers.Contract(
-                CONFIG.address,
-                CONFIG.abi,
-                signer
-            );
-
-            walletAddress.textContent =
-                `Connected: ${shortenAddress(currentAccount)}`;
-
-            walletStatus.innerHTML =
-                '<span class="status-dot"></span> Connected';
-
-            connectWalletBtn.innerHTML =
-                '<i class="fa-solid fa-wallet"></i> ' +
-                shortenAddress(currentAccount);
-
-            await loadElectionData();
-
-        } else {
-            votingContract = null;
-            showNotification(
-                "Please switch MetaMask to Sepolia Testnet.",
-                "error"
-            );
-        }
-    });
-
-
-    // NETWORK CHANGE LISTENER
-
-    window.ethereum.on("chainChanged", () => {
-        window.location.reload();
-    });
+    window.ethereum.on("accountsChanged", () => window.location.reload());
+    window.ethereum.on("chainChanged", () => window.location.reload());
 }
 
-
-// =========================================
-// EVENT LISTENERS
-// =========================================
-
-connectWalletBtn.addEventListener("click", connectWallet);
+$("contractAddr").textContent = CONFIG.address;
+$("connectBtn").addEventListener("click", () => connectWallet(true));
+autoConnect();

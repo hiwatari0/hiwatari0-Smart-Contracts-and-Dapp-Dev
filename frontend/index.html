@@ -1,345 +1,102 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="VOTEX - A transparent decentralized voting platform powered by Ethereum.">
-
-    <title>VOTEX | Decentralized Voting</title>
-
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-
-    <!-- Main Stylesheet -->
+    <title>ChainBallot | Decentralized Voting</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
-
 <body>
 
-<div class="app-layout">
+    <header class="topbar">
+        <h1 class="brand">Chain<span>Ballot</span></h1>
 
-    <!-- SIDEBAR -->
-    <aside class="sidebar">
-
-        <div class="brand">
-            <div class="brand-logo">
-                <i class="fa-solid fa-check-to-slot"></i>
-            </div>
-            <span>VOTEX<span class="brand-accent">.</span></span>
+        <div class="topbar-right">
+            <span id="networkBadge" class="badge">Not connected</span>
+            <button id="connectBtn" class="btn">Connect MetaMask</button>
         </div>
+    </header>
 
-        <div class="sidebar-content">
+    <main class="layout">
 
-            <p class="sidebar-heading">WORKSPACE</p>
+        <!-- HERO -->
+        <section class="hero">
+            <div class="hero-text">
+                <h2>One address, one vote.</h2>
+                <p>
+                    Every vote is a transaction on the blockchain. The numbers on this
+                    page are read straight from the smart contract, not stored in the page.
+                </p>
 
-            <nav class="navigation">
-                <a href="#dashboard" class="nav-item active">
-                    <i class="fa-solid fa-house"></i>
-                    <span>Overview</span>
-                </a>
-
-                <a href="#candidates" class="nav-item">
-                    <i class="fa-solid fa-users"></i>
-                    <span>Candidates</span>
-                </a>
-
-                <a href="#results" class="nav-item">
-                    <i class="fa-solid fa-chart-pie"></i>
-                    <span>Election Results</span>
-                </a>
-            </nav>
-
-            <div class="sidebar-network">
-                <p class="sidebar-heading">BLOCKCHAIN NETWORK</p>
-
-                <div class="network-card">
-                    <div class="ethereum-icon">
-                        <i class="fa-brands fa-ethereum"></i>
-                    </div>
-
-                    <div class="network-info">
-                        <strong>Ethereum</strong>
-                        <span id="networkName">Sepolia Testnet</span>
-                    </div>
-
-                    <span id="networkIndicator" class="network-indicator"></span>
-                </div>
+                <ol class="steps">
+                    <li><span>1</span> Connect your wallet</li>
+                    <li><span>2</span> Pick a candidate</li>
+                    <li><span>3</span> Confirm in MetaMask</li>
+                </ol>
             </div>
 
-        </div>
+            <dl class="info">
+                <div>
+                    <dt>Account</dt>
+                    <dd id="account">Not connected</dd>
+                </div>
+                <div>
+                    <dt>Network</dt>
+                    <dd id="networkName">-</dd>
+                </div>
+                <div>
+                    <dt>Contract</dt>
+                    <dd id="contractAddr">-</dd>
+                </div>
+            </dl>
+        </section>
 
-        <div class="sidebar-footer">
-            <div class="footer-icon">
-                <i class="fa-solid fa-shield-halved"></i>
+        <!-- STATS -->
+        <section class="stats">
+            <article class="stat">
+                <span class="label">Total votes</span>
+                <strong id="totalVotes">-</strong>
+            </article>
+            <article class="stat">
+                <span class="label">Candidates</span>
+                <strong id="candidateCount">-</strong>
+            </article>
+            <article class="stat">
+                <span class="label">Your status</span>
+                <strong id="voteStatus">-</strong>
+            </article>
+        </section>
+
+        <!-- CANDIDATES -->
+        <section class="section">
+            <h2>Candidates</h2>
+            <div id="candidateList" class="candidate-grid">
+                <p class="placeholder">Connect your wallet to load candidates from the contract.</p>
             </div>
-            <div>
-                <strong>Blockchain Secured</strong>
-                <span>Powered by Ethereum</span>
+        </section>
+
+        <!-- RESULTS -->
+        <section class="section panel">
+            <h2>Live results</h2>
+            <div id="results">
+                <p class="placeholder">Results will appear here once your wallet is connected.</p>
             </div>
-        </div>
-
-    </aside>
-
-
-    <!-- MAIN CONTENT -->
-    <main class="main-content" id="dashboard">
-
-        <!-- TOPBAR -->
-        <header class="topbar">
-
-            <div class="page-breadcrumb">
-                <span>Workspace</span>
-                <i class="fa-solid fa-chevron-right"></i>
-                <strong>Overview</strong>
-            </div>
-
-            <div class="topbar-right">
-
-                <div class="network-pill">
-                    <span class="status-dot"></span>
-                    <span>Sepolia</span>
-                </div>
-
-                <button id="connectWalletBtn" class="connect-wallet-btn">
-                    <i class="fa-solid fa-wallet"></i>
-                    <span>Connect Wallet</span>
-                </button>
-
-            </div>
-
-        </header>
-
-
-        <!-- DASHBOARD CONTENT -->
-        <div class="dashboard-content">
-
-            <!-- HERO SECTION -->
-            <section class="hero-section">
-
-                <div class="hero-text">
-                    <div class="hero-label">
-                        <span class="hero-label-dot"></span>
-                        DECENTRALIZED GOVERNANCE
-                    </div>
-
-                    <h1>Your voice.<br>
-                        <span>Your vote.</span>
-                    </h1>
-
-                    <p>
-                        A transparent and secure voting experience,
-                        powered by blockchain technology.
-                    </p>
-                </div>
-
-                <div class="hero-visual">
-                    <div class="hero-orbit orbit-one"></div>
-                    <div class="hero-orbit orbit-two"></div>
-
-                    <div class="hero-center">
-                        <i class="fa-solid fa-check-to-slot"></i>
-                    </div>
-
-                    <div class="hero-floating-icon icon-one">
-                        <i class="fa-brands fa-ethereum"></i>
-                    </div>
-
-                    <div class="hero-floating-icon icon-two">
-                        <i class="fa-solid fa-shield-halved"></i>
-                    </div>
-                </div>
-
-            </section>
-
-
-            <!-- WALLET PANEL -->
-            <section class="wallet-panel">
-
-                <div class="wallet-panel-left">
-                    <div class="wallet-icon">
-                        <i class="fa-solid fa-wallet"></i>
-                    </div>
-
-                    <div class="wallet-text">
-                        <h3>Wallet Connection</h3>
-                        <p id="walletAddress">
-                            Connect your MetaMask wallet to participate.
-                        </p>
-                    </div>
-                </div>
-
-                <div id="walletStatus" class="wallet-status">
-                    <span class="status-dot"></span>
-                    Not Connected
-                </div>
-
-            </section>
-
-
-            <!-- STATISTICS -->
-            <section class="stats-grid">
-
-                <article class="stat-card">
-                    <div class="stat-header">
-                        <span>Total Candidates</span>
-                        <div class="stat-icon blue">
-                            <i class="fa-solid fa-users"></i>
-                        </div>
-                    </div>
-
-                    <h2 id="totalCandidates">--</h2>
-                    <p>Registered candidates</p>
-                </article>
-
-
-                <article class="stat-card">
-                    <div class="stat-header">
-                        <span>Total Votes</span>
-                        <div class="stat-icon purple">
-                            <i class="fa-solid fa-chart-column"></i>
-                        </div>
-                    </div>
-
-                    <h2 id="totalVotes">--</h2>
-                    <p>Votes recorded on-chain</p>
-                </article>
-
-
-                <article class="stat-card">
-                    <div class="stat-header">
-                        <span>Your Voting Status</span>
-                        <div class="stat-icon green">
-                            <i class="fa-solid fa-shield-halved"></i>
-                        </div>
-                    </div>
-
-                    <h2 id="votingStatus">--</h2>
-                    <p id="votingStatusDescription">
-                        Connect wallet to check
-                    </p>
-                </article>
-
-            </section>
-
-
-            <!-- CANDIDATES -->
-            <section class="content-section" id="candidates">
-
-                <div class="section-header">
-                    <div>
-                        <span class="section-eyebrow">MAKE YOUR CHOICE</span>
-                        <h2>Election Candidates</h2>
-                        <p>Explore the candidates and cast your vote.</p>
-                    </div>
-
-                    <div class="live-indicator">
-                        <span class="status-dot"></span>
-                        Live Blockchain Data
-                    </div>
-                </div>
-
-
-                <!-- Populated dynamically from Voting.sol -->
-                <div id="candidateList" class="candidate-grid">
-
-                    <div class="empty-state">
-                        <div class="empty-state-icon">
-                            <i class="fa-solid fa-cube"></i>
-                        </div>
-
-                        <h3>Awaiting Blockchain Connection</h3>
-
-                        <p>
-                            Connect your wallet to retrieve candidate
-                            information from the smart contract.
-                        </p>
-                    </div>
-
-                </div>
-
-            </section>
-
-
-            <!-- RESULTS -->
-            <section class="content-section results-section" id="results">
-
-                <div class="section-header">
-                    <div>
-                        <span class="section-eyebrow">TRANSPARENT ELECTION</span>
-                        <h2>Live Voting Results</h2>
-                        <p>Vote counts retrieved directly from Ethereum.</p>
-                    </div>
-                </div>
-
-                <div id="resultsList" class="results-panel">
-
-                    <div class="results-empty">
-                        <i class="fa-solid fa-chart-simple"></i>
-                        <p>Election results will appear here.</p>
-                    </div>
-
-                </div>
-
-            </section>
-
-
-            <!-- TRANSACTION FEEDBACK -->
-            <section id="transactionPanel" class="transaction-panel hidden">
-
-                <div id="transactionIcon" class="transaction-icon">
-                    <i class="fa-solid fa-clock"></i>
-                </div>
-
-                <div class="transaction-details">
-                    <h3 id="transactionTitle">Transaction Status</h3>
-                    <p id="transactionMessage"></p>
-                </div>
-
-            </section>
-
-
-            <!-- NOTIFICATIONS -->
-            <div id="notification" class="notification hidden"
-                 role="status" aria-live="polite">
-
-                <i id="notificationIcon" class="fa-solid fa-circle-info"></i>
-                <span id="notificationMessage"></span>
-
-            </div>
-
-
-            <!-- FOOTER -->
-            <footer class="main-footer">
-
-                <span>© 2026 VOTEX. Decentralized Voting Platform.</span>
-
-                <span>
-                    Built with <i class="fa-brands fa-ethereum"></i> Ethereum
-                </span>
-
-            </footer>
-
-        </div>
+        </section>
+
+        <!-- TRANSACTION STATUS -->
+        <section id="txPanel" class="panel tx hidden" role="status" aria-live="polite">
+            <h2 id="txTitle"></h2>
+            <p id="txMessage"></p>
+        </section>
 
     </main>
 
-</div>
+    <footer class="footer">
+        Blockchain Technology Lab &middot; Voting DApp built with Solidity and ethers.js
+    </footer>
 
-
-<!-- ETHERS.JS -->
-<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
-
-<!-- SMART CONTRACT CONFIGURATION -->
-<script src="js/contract.js"></script>
-
-<!-- APPLICATION LOGIC -->
-<script src="js/app.js"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+    <script src="js/contract.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>
